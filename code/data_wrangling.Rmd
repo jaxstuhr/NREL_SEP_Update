@@ -1,0 +1,84 @@
+---
+title: "Data Wranglin"
+author: "Jaxon Stuhr"
+date: "1/27/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(here)
+library(tidyverse)
+library(readxl)
+library(janitor)
+```
+
+```{r}
+# read in data 
+table5_2_raw = read_excel(here("data", "MECS_Table_5_2.xlsx"))
+
+table5_2 = table5_2_raw %>% 
+  # delete top rows
+  tail(-13) %>% 
+  # rename cols
+  rename("naics_code" = "Released: February 2021",
+         "end_use" = "...2",
+         "total" = "...3",
+         "net_electricity" = "...4",
+         "residual_fuel_oil" = "...5",
+         "distillate_fuel_oil_and_diesel_fuel" = "...6",
+         "nat_gas" = "...7",
+         "hgl_excluding_ng" = "...8",
+         "coal_excluding_coke_and_breeze" = "...9",
+         "other" = "...10") %>%
+  # remove blank rows
+  remove_empty("rows") 
+```
+
+```{r}
+# set NAICS code vals for all entries with blank codes
+counter = 1
+for (entry in table5_2$naics_code) {
+  if (is.na(entry)) {
+    table5_2$naics_code[counter] = table5_2$naics_code[counter - 1]
+  }
+  counter = counter + 1
+}  
+```
+
+```{#r}
+# remove subtotal and total rows 
+table5_2 = table5_2 %>% 
+  filter(!(end_use %in% c("Indirect Uses-Boiler Fuel", 
+                          "Direct Uses-Total Process", 
+                          "Direct Uses-Total Nonprocess",
+                          "TOTAL FUEL CONSUMPTION"))) %>% 
+  na.omit()
+```
+
+```{#r}
+# remove total rows in beginning (naics_code = 311-339)
+table5_2 = table5_2 %>% 
+  filter(naics_code != "311 - 339")
+```
+
+```{#r}
+# update 4-digit naics code values to other = total - 5/6 digit naics code values, 
+# currently 4-digit values = total
+counter = 1
+# iterate through all unique naics codes
+for (code in unique(table5_2$naics_code)) {
+  # check if code is 4 digits
+  if (nchar(code) == 4) {
+    # if yes, iterate through all naics codes
+    for (sub_code in table5_2$naics_code) {
+      # find naics sub codes that match 4 digit code
+      if (nchar(sub_code) > 4 & substr(sub_code, 1, 4) == code)
+        a = 1 #placeholder code
+    }
+  }
+  counter = counter + 1    
+}
+```
+
+
