@@ -15,9 +15,9 @@ library(janitor)
 
 ```{r}
 # read in data 
-table5_2_raw = read_excel(here("data", "MECS_Table_5_2.xlsx"))
+mecs5_2_raw = read_excel(here("data", "MECS_Table_5_2.xlsx"))
 
-table5_2 = table5_2_raw %>% 
+mecs5_2 = mecs5_2_raw %>% 
   # delete top rows
   tail(-13) %>% 
   # rename cols
@@ -38,17 +38,32 @@ table5_2 = table5_2_raw %>%
 ```{r}
 # set NAICS code vals for all entries with blank codes
 counter = 1
-for (entry in table5_2$naics_code) {
+for (entry in mecs5_2$naics_code) {
   if (is.na(entry)) {
-    table5_2$naics_code[counter] = table5_2$naics_code[counter - 1]
+    mecs5_2$naics_code[counter] = mecs5_2$naics_code[counter - 1]
   }
   counter = counter + 1
 }  
 ```
 
+```{r}
+# update all non-numeral values in mecs table
+```
+
+
+```{r}
+# convert data type to numeric for columns 3 - 10
+cols_to_numeric <- c(3:10) 
+mecs5_2[ , cols_to_numeric] = apply(mecs5_2[ , cols_to_numeric], 2,            # Specify own function within apply
+                    function(x) as.numeric(as.character(x)
+                                           )
+                    )
+```
+
+
 ```{#r}
 # remove subtotal and total rows 
-table5_2 = table5_2 %>% 
+mecs5_2 = mecs5_2 %>% 
   filter(!(end_use %in% c("Indirect Uses-Boiler Fuel", 
                           "Direct Uses-Total Process", 
                           "Direct Uses-Total Nonprocess",
@@ -58,7 +73,7 @@ table5_2 = table5_2 %>%
 
 ```{#r}
 # remove total rows in beginning (naics_code = 311-339)
-table5_2 = table5_2 %>% 
+mecs5_2 = mecs5_2 %>% 
   filter(naics_code != "311 - 339")
 ```
 
@@ -67,18 +82,67 @@ table5_2 = table5_2 %>%
 # currently 4-digit values = total
 counter = 1
 # iterate through all unique naics codes
-for (code in unique(table5_2$naics_code)) {
+for (unique_code in unique(mecs5_2$naics_code)) {
   # check if code is 4 digits
-  if (nchar(code) == 4) {
+  if (nchar(unique_code) == 4) {
     # if yes, iterate through all naics codes
-    for (sub_code in table5_2$naics_code) {
+    for (code in mecs5_2$naics_code) {
       # find naics sub codes that match 4 digit code
-      if (nchar(sub_code) > 4 & substr(sub_code, 1, 4) == code)
+      if (nchar(code) > 4 & substr(code, 1, 4) == unique_code)
         a = 1 #placeholder code
     }
   }
   counter = counter + 1    
 }
 ```
+
+```{r}
+update_naics_vals = function(mecs_table, current_code, next_code, current_row, next_row, end_use_count, char_count) {
+  new_vals = mecs_table[row, ]
+  if (
+    nchar(current_code) == 4 & 
+    nchar(next_code) > char_count & 
+    substr(next_code, 1, char_count) == current_code
+    ) {
+    # update values of usage columns when match is found (indices are for values that need updating)
+    new_vals[3:10] = new_vals[3:10] - mecs_table[next_row, 3:10]
+    # redefine next row and code
+    next_row = next_row + end_use_count
+    next_code = mecs_table$naics_code[next_row]
+    # re-call function
+    update_naics_vals(mecs_table, current_code, next_code, current_row, next_row, end_use_count, char_count)
+  }
+  # output new values
+  new_vals
+}
+```
+
+```{r}
+# initialize new table
+new_mecs_table = mecs5_2[0, ]
+# count number of end uses / number each time each naics code appears
+end_use_count = sum(mecs5_2$naics_code == mecs5_2$naics_code[1])
+char_count = 4 # updating 4 digit naics codes
+# iterate through rows in mecs table
+for (row in 1: (nrow(mecs5_2) - end_use_count) ) {
+#for (row in 1: 57) {
+  # define current code, next code, and next row index with same end use as current
+  current_code = mecs5_2$naics_code[row]
+  next_row = row + end_use_count
+  next_code = mecs5_2$naics_code[next_row]
+  # build new table one row at a time by calling update_naics_vals
+  new_mecs_table[nrow(new_mecs_table) + 1,] = 
+    update_naics_vals(mecs5_2, current_code, next_code, current_row, next_row, end_use_count, char_count)
+}
+
+```
+
+```{r}
+# add last naics code values on to new data frame
+end_of_old_table = mecs5_2[as.numeric(count(mecs5_2) - end_use_count + 1):as.numeric(count(mecs5_2)), ]
+new_mecs_table = rbind(new_mecs_table, end_of_old_table)
+```
+
+
 
 
