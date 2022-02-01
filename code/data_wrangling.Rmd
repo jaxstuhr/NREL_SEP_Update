@@ -77,64 +77,60 @@ mecs5_2 = mecs5_2 %>%
   filter(naics_code != "311 - 339")
 ```
 
-```{#r}
-# update 4-digit naics code values to other = total - 5/6 digit naics code values, 
-# currently 4-digit values = total
-counter = 1
-# iterate through all unique naics codes
-for (unique_code in unique(mecs5_2$naics_code)) {
-  # check if code is 4 digits
-  if (nchar(unique_code) == 4) {
-    # if yes, iterate through all naics codes
-    for (code in mecs5_2$naics_code) {
-      # find naics sub codes that match 4 digit code
-      if (nchar(code) > 4 & substr(code, 1, 4) == unique_code)
-        a = 1 #placeholder code
-    }
-  }
-  counter = counter + 1    
+```{r}
+update_naics_vals = function(new_vals, mecs_table, current_code, next_code, current_row, next_row, end_use_count, char_count) {
+    # update values of usage columns when match is found (indices are for values that need updating)
+    new_vals[3:10] = new_vals[3:10] - mecs_table[next_row, 3:10]
+    # update next row (w same end use) and code
+    next_row = next_row + end_use_count
+    next_code = mecs_table$naics_code[next_row]
+    # check if next naics code is also sub-code of current code
+    if (
+      nchar(current_code) == char_count & 
+      nchar(next_code) > char_count & 
+      substr(next_code, 1, char_count) == current_code
+      ) {
+      # if yes, recall update naics function
+        return(update_naics_vals(new_vals, mecs_table, current_code, next_code, current_row, next_row, end_use_count, char_count))
+    } else {
+      # if no, return new vals
+        return(new_vals)
+      }
+   # update_naics_vals(new_vals, mecs_table, current_code, next_code, current_row, next_row, end_use_count, char_count)
+  #}
 }
 ```
 
-```{r}
-update_naics_vals = function(mecs_table, current_code, next_code, current_row, next_row, end_use_count, char_count) {
-  new_vals = mecs_table[row, ]
-  if (
-    nchar(current_code) == 4 & 
-    nchar(next_code) > char_count & 
-    substr(next_code, 1, char_count) == current_code
-    ) {
-    # update values of usage columns when match is found (indices are for values that need updating)
-    new_vals[3:10] = new_vals[3:10] - mecs_table[next_row, 3:10]
-    # redefine next row and code
-    next_row = next_row + end_use_count
-    next_code = mecs_table$naics_code[next_row]
-    # re-call function
-    update_naics_vals(mecs_table, current_code, next_code, current_row, next_row, end_use_count, char_count)
-  }
-  # output new values
-  new_vals
-}
-```
+## Update 4-digit NAICS Codes
 
 ```{r}
 # initialize new table
 new_mecs_table = mecs5_2[0, ]
-# count number of end uses / number each time each naics code appears
+# count number of end uses /// number each time each naics code appears
 end_use_count = sum(mecs5_2$naics_code == mecs5_2$naics_code[1])
 char_count = 4 # updating 4 digit naics codes
 # iterate through rows in mecs table
 for (row in 1: (nrow(mecs5_2) - end_use_count) ) {
-#for (row in 1: 57) {
   # define current code, next code, and next row index with same end use as current
   current_code = mecs5_2$naics_code[row]
   next_row = row + end_use_count
   next_code = mecs5_2$naics_code[next_row]
-  # build new table one row at a time by calling update_naics_vals
-  new_mecs_table[nrow(new_mecs_table) + 1,] = 
-    update_naics_vals(mecs5_2, current_code, next_code, current_row, next_row, end_use_count, char_count)
+  # build array of vals for row to be updated
+  new_vals = mecs5_2[row, ]
+  # check next row is subcode of current code
+  if (
+      nchar(current_code) == char_count & 
+      nchar(next_code) > char_count & 
+      substr(next_code, 1, char_count) == current_code
+      ) {
+    # if yes, update vals
+          new_mecs_table[nrow(new_mecs_table) + 1,] = 
+    update_naics_vals(new_vals, mecs5_2, current_code, next_code, current_row, next_row, end_use_count, char_count)
+  } else {
+    # if not, append row to data
+    new_mecs_table[nrow(new_mecs_table) + 1,] = new_vals
+  }
 }
-
 ```
 
 ```{r}
@@ -143,6 +139,41 @@ end_of_old_table = mecs5_2[as.numeric(count(mecs5_2) - end_use_count + 1):as.num
 new_mecs_table = rbind(new_mecs_table, end_of_old_table)
 ```
 
+## Update 3-digit NAICS Codes
 
+```{r}
+# initialize new table
+final_mecs_table = new_mecs_table[0, ]
+# count number of end uses /// number each time each naics code appears
+end_use_count = sum(new_mecs_table$naics_code == new_mecs_table$naics_code[1])
+char_count = 3 # updating 4 digit naics codes
+# iterate through rows in mecs table
+for (row in 1:(nrow(new_mecs_table) - end_use_count) ) {
+  # define current code, next code, and next row index with same end use as current
+  current_code = new_mecs_table$naics_code[row]
+  next_row = row + end_use_count
+  next_code = new_mecs_table$naics_code[next_row]
+  # build array of vals for row to be updated
+  new_vals = new_mecs_table[row, ]
+  # check next row is subcode of current code
+  if (
+      nchar(current_code) == char_count & 
+      nchar(next_code) > char_count & 
+      substr(next_code, 1, char_count) == current_code
+      ) {
+    # if yes, update vals
+          final_mecs_table[nrow(final_mecs_table) + 1,] = 
+    update_naics_vals(new_vals, new_mecs_table, current_code, next_code, current_row, next_row, end_use_count, char_count)
+  } else {
+    # if not, append row to data
+    final_mecs_table[nrow(final_mecs_table) + 1,] = new_vals
+  }
+}
+```
 
+```{r}
+# add last naics code values on to new data frame
+end_of_old_table = new_mecs_table[as.numeric(count(new_mecs_table) - end_use_count + 1):as.numeric(count(new_mecs_table)), ]
+final_mecs_table = rbind(final_mecs_table, end_of_old_table)
+```
 
