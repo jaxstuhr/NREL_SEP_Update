@@ -1,0 +1,31 @@
+---
+title: "Get MECS Coeffs"
+author: "Jaxon Stuhr"
+date: "2/9/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(here)
+library(tidyverse)
+library(readxl)
+library(janitor)
+library(writexl)
+```
+
+```{r}
+# unit conversions
+kwh_to_btu = 3412.1416
+mil_kwh_to_tbtu = kwh_to_btu * (10^6) / (10^12)
+```
+
+```{r}
+# read in raw mecs tables
+raw3_5 = read_excel(here("data", "Table3_5.xlsx"))
+raw3_6 = read_excel(here("data", "Table3_6.xlsx"))
+raw7_7 = read_excel(here("data", "Table7_7.xlsx"))
+raw11_1 = read_excel(here("data", "Table11_1.xlsx"))
+raw11_3 = read_excel(here("data", "Table11_3.xlsx"))
+raw11_5 = read_excel(here("data", "Table11_5.xlsx"))
+```
