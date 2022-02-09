@@ -69,7 +69,8 @@ mecs3_6 = raw3_6 %>%
   # remove subsector description column
   select(naics_code, pulping_liquor_or_black_liquor : wood_related_paper_related_refuse) %>%
   # remove blank rows
-  remove_empty("rows") %>% 
+  remove_empty("rows") %>%
+  # total US only
   head(14)
 ```
 
@@ -94,5 +95,66 @@ mecs7_7 = raw7_7 %>%
   select(naics_code, elec_tot_mil_kwh : steam_other_sources_bil_btu) %>%
   # remove blank rows
   remove_empty("rows") %>% 
+  # total US only
+  head(82)
+```
+
+```{r}
+# clean table 11.1
+# Total united states only
+mecs11_1 = raw11_1 %>% 
+  # delete top rows
+  tail(-11) %>% 
+  # rename cols
+  rename("naics_code" = "Released: February 2021",
+         "purchases" = "...3",
+         "transfers_in" = "...4",
+         "total_onsite_generation" = "...5",
+         "sales_and_transfers_offsite" = "...6",
+         "net_demand_for_electricity" = "...7") %>%
+  # remove subsector description column
+  select(naics_code, purchases : net_demand_for_electricity) %>%
+  # remove blank rows
+  remove_empty("rows") %>%
+  # total US only
+  head(82)
+```
+
+```{r}
+# clean table 11.3
+# Total united states only
+mecs11_3 = raw11_3 %>% 
+  # delete top rows
+  tail(-12) %>% 
+  # rename cols
+  rename("naics_code" = "Released: February 2021",
+         "total_onsite_generation" = "...3",
+         "cogeneration" = "...4",
+         "renewable_energy_excluding_wood_and_biomass" = "...5",
+         "other" = "...6") %>%
+  # remove subsector description column
+  select(naics_code, total_onsite_generation : other) %>%
+  # remove blank rows
+  remove_empty("rows") %>% 
+  # total US only
+  head(82)
+```
+
+```{r}
+# clean table 11.3
+# Total united states only
+mecs11_5 = raw11_5 %>% 
+  # delete top rows
+  tail(-12) %>% 
+  # rename cols
+  rename("naics_code" = "Released: February 2021",
+         "totals_sales_transfers_offsite" = "...3",
+         "utility_purchaser" = "...4",
+         "nonutility_purchaser" = "...5") %>%
+  # remove subsector description column
+  select(naics_code, totals_sales_transfers_offsite : nonutility_purchaser) %>%
+  # remove blank rows
+  remove_empty("rows") %>% 
+  # total US only
   head(82)
 ```
