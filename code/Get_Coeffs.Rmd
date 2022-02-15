@@ -6,7 +6,7 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
 library(here)
 library(tidyverse)
 library(readxl)
@@ -18,14 +18,352 @@ library(writexl)
 # unit conversions
 kwh_to_btu = 3412.1416
 mil_kwh_to_tbtu = kwh_to_btu * (10^6) / (10^12)
+ng_bil_cu_ft_to_tbtu = 1.0388 # calculate from mecs tables 5.3, 5.4
+bil_btu_to_tbtu = 0.001
 ```
 
 ```{r}
 # read in raw mecs tables
-raw3_5 = read_excel(here("data", "Table3_5.xlsx"))
-raw3_6 = read_excel(here("data", "Table3_6.xlsx"))
-raw7_7 = read_excel(here("data", "Table7_7.xlsx"))
-raw11_1 = read_excel(here("data", "Table11_1.xlsx"))
-raw11_3 = read_excel(here("data", "Table11_3.xlsx"))
-raw11_5 = read_excel(here("data", "Table11_5.xlsx"))
+raw3_5 = read_excel(here("data", "Table3_5.xlsx")) # UNITS = Tbtu
+raw3_6 = read_excel(here("data", "Table3_6.xlsx")) # UNITS = Tbtu
+raw7_7 = read_excel(here("data", "Table7_7.xlsx")) # UNITS = varied, million kWh or billion cu ft or billion btu
+raw11_1 = read_excel(here("data", "Table11_1.xlsx")) # UNITS = million kWh
+raw11_3 = read_excel(here("data", "Table11_3.xlsx")) # UNITS = million kWH (?)
+raw11_5 = read_excel(here("data", "Table11_5.xlsx")) # UNITS = million kWh
 ```
+
+```{r}
+# clean table 3.5
+# Total united states only
+mecs3_5 = raw3_5 %>% 
+  # delete top rows
+  tail(-12) %>% 
+  # rename cols
+  rename("naics_code" = "Released: February 2021",
+         "selected_byproducts_in_fuel_consumption_total" = "...3",
+         "blast_furnace_coke_oven_gases" = "...4",
+         "waste_gas" = "...5",
+         "petroleum_coke" = "...6",
+         "pulping_liquor_or_black_liquor" = "...7",
+         "wood_chips_bark" = "...8",
+         "waste_oils_tars_waste_minerals" = "...9") %>%
+  # remove subsector description column
+  select(naics_code, selected_byproducts_in_fuel_consumption_total : waste_oils_tars_waste_minerals) %>%
+  # remove blank rows
+  remove_empty("rows") %>% 
+  # total US only
+  head(82) %>% 
+  # convert values to numeric
+  mutate_all(as.numeric)
+```
+
+```{r}
+# clean table 3.6
+# Total united states only
+mecs3_6 = raw3_6 %>% 
+  # delete top rows
+  tail(-17) %>% 
+  # rename cols
+  rename("naics_code" = "Released: February 2021",
+         "pulping_liquor_or_black_liquor" = "...3",
+         "biomass_total" = "...4",
+         "agricultural_waste" = "...5",
+         "wood_harvested_directly_from_trees" = "...6",
+         "wood_residues_byproducts_from_mill_processing" = "...7",
+         "wood_related_paper_related_refuse" = "...8") %>%
+  # remove subsector description column
+  select(naics_code, pulping_liquor_or_black_liquor : wood_related_paper_related_refuse) %>%
+  # remove blank rows
+  remove_empty("rows") %>%
+  # total US only
+  head(14) %>% 
+  # convert values to numeric
+  mutate_all(as.numeric)
+  # add missing rows with 0s
+  missing_codes = mecs3_5$naics_code[!(mecs3_5$naics_code %in% mecs3_6$naics_code)]
+  for (code in missing_codes) {
+    mecs3_6[nrow(mecs3_6) + 1,] = as.list(c(code,0,0,0,0,0,0))
+  }
+  ### 311221 added but 3112 set to zero, MANUALLY UPDATE 3112!!!
+  mecs3_6[15,2:6] = mecs3_6[2,2:6]
+```
+
+```{r}
+# clean table 7.7
+# Total united states only
+mecs7_7 = raw7_7 %>% 
+  # delete top rows
+  tail(-16) %>% 
+  # rename cols
+  rename("naics_code" = "Released: September 2021",
+         "elec_tot_mil_kwh" = "...3",
+         "elec_loc_utility_mil_kwh" = "...4",
+         "elec_other_sources_mil_kwh" = "...5",
+         "ng_tot_bil_cu_ft" = "...6",
+         "ng_loc_utility_bil_cu_ft" = "...7",
+         "ng_other_sources_bil_cu_ft" = "...8",
+         "steam_tot_bil_btu" = "...9",
+         "steam_loc_utility_bil_btu" = "...10",
+         "steam_other_sources_bil_btu" = "...11") %>%
+  # remove subsector description column
+  select(naics_code, elec_tot_mil_kwh : steam_other_sources_bil_btu) %>%
+  # remove blank rows
+  remove_empty("rows") %>% 
+  # total US only
+  head(82) %>% 
+  # convert values to numeric
+  mutate_all(as.numeric) %>% 
+  # update electricity units to tbtu
+  mutate_at(vars(elec_tot_mil_kwh:elec_other_sources_mil_kwh),
+            .funs = funs(. * mil_kwh_to_tbtu)) %>%
+  # update ng units to tbtu
+  mutate_at(vars(ng_tot_bil_cu_ft:ng_other_sources_bil_cu_ft),
+            .funs = funs(. * ng_bil_cu_ft_to_tbtu)) %>%
+  # update steam units to tbtu
+  mutate_at(vars(steam_tot_bil_btu:steam_other_sources_bil_btu),
+            .funs = funs(. * bil_btu_to_tbtu)) %>% 
+  mutate_all(round)
+```
+
+```{r}
+# clean table 11.1
+# Total united states only
+mecs11_1 = raw11_1 %>% 
+  # delete top rows
+  tail(-11) %>% 
+  # rename cols
+  rename("naics_code" = "Released: February 2021",
+         "elec_purchases" = "...3",
+         "elec_transfers_in" = "...4",
+         "elec_total_onsite_generation" = "...5",
+         "elec_sales_and_transfers_offsite" = "...6",
+         "elec_net_demand_for_electricity" = "...7") %>%
+  # remove subsector description column
+  select(naics_code, elec_purchases : elec_net_demand_for_electricity) %>%
+  # remove blank rows
+  remove_empty("rows") %>%
+  # total US only
+  head(82) %>% 
+  # convert values to numeric
+  mutate_all(as.numeric) %>% 
+  # convert all values from million kWh to TBtu
+  mutate_at(vars(elec_purchases:elec_net_demand_for_electricity),
+            .funs = funs(. * mil_kwh_to_tbtu)) %>% 
+  mutate_all(round)
+```
+
+```{r}
+# clean table 11.3
+# Total united states only
+mecs11_3 = raw11_3 %>% 
+  # delete top rows
+  tail(-12) %>% 
+  # rename cols, drop onsite generation bc included in 11.1
+  rename("naics_code" = "Released: February 2021",
+         "elec_cogeneration" = "...4",
+         "elec_renewable_energy_excluding_wood_and_biomass" = "...5",
+         "elec_other" = "...6") %>%
+  # remove subsector description column
+  select(naics_code, elec_cogeneration : elec_other) %>%
+  # remove blank rows
+  remove_empty("rows") %>% 
+  # total US only
+  head(82) %>% 
+  # convert values to numeric
+  mutate_all(as.numeric) %>% 
+  # convert all values from million kWh to TBtu
+  mutate_at(vars(elec_cogeneration : elec_other),
+            .funs = funs(. * mil_kwh_to_tbtu)) %>% 
+  mutate_all(round)
+```
+
+```{r}
+# clean table 11.3
+# Total united states only
+mecs11_5 = raw11_5 %>% 
+  # delete top rows
+  tail(-12) %>% 
+  # rename cols
+  rename("naics_code" = "Released: February 2021",
+         "elec_totals_sales_transfers_offsite" = "...3",
+         "elec_utility_purchaser" = "...4",
+         "elec_nonutility_purchaser" = "...5") %>%
+  # remove subsector description column
+  select(naics_code, elec_totals_sales_transfers_offsite : elec_nonutility_purchaser) %>%
+  # remove blank rows
+  remove_empty("rows") %>% 
+  # total US only
+  head(82)  %>% 
+  # convert values to numeric
+  mutate_all(as.numeric) %>% 
+  # convert all values from million kWh to TBtu
+  mutate_at(vars(elec_totals_sales_transfers_offsite:elec_nonutility_purchaser),
+            .funs = funs(. * mil_kwh_to_tbtu)) %>% 
+  mutate_all(round)
+```
+
+```{r}
+# merge all tables by naics code
+all_coeffs = mecs3_5 %>% 
+  merge(mecs3_6, by = "naics_code", all = TRUE, sort = FALSE) %>% 
+  merge(mecs7_7, by = "naics_code", sort = FALSE) %>% 
+  merge(mecs11_1, by = "naics_code", sort = FALSE) %>% 
+  merge(mecs11_3, by = "naics_code", sort = FALSE) %>% 
+  merge(mecs11_5, by = "naics_code", sort = FALSE) %>% 
+  # set all NAs to zero
+  mutate_all(funs(ifelse(is.na(.), 0, .)))
+```
+
+```{r}
+# function to update aggregated values in MECS table
+update_coeffs = function(new_vals, mecs_table, current_code, next_code, next_row, char_count) {
+    # update values of usage columns when match is found (indices are for values that need updating)
+    new_vals[2:34] = new_vals[2:34] - mecs_table[next_row, 2:34]
+    # update next row (w same end use) and code
+    next_row = next_row + 1
+    next_code = mecs_table$naics_code[next_row]
+    # check if next naics code is also sub-code of current code
+    if (
+      nchar(current_code) == char_count & 
+      nchar(next_code) > char_count & 
+      substr(next_code, 1, char_count) == current_code
+      ) {
+      # if yes, recall update naics function
+        return(update_coeffs(new_vals, mecs_table, current_code, next_code, next_row, char_count))
+    } else {
+      # if no, return new vals
+        return(new_vals)
+      }
+}
+```
+
+## Update 4-digit NAICS Codes
+
+```{r}
+# initialize new table
+new_coeffs_4_digit_updated = all_coeffs[0, ]
+# updating 4 digit naics codes
+char_count = 4 
+# iterate through rows in mecs table
+for (row in 1: (nrow(all_coeffs) - 1) ) {
+  # define current code, next code, and next row index with same end use as current
+  current_code = all_coeffs$naics_code[row]
+  next_row = row + 1
+  next_code = all_coeffs$naics_code[next_row]
+  # build array of vals for row to be updated
+  new_vals = all_coeffs[row, ]
+  # check next row is subcode of current code
+  if (
+      nchar(current_code) == char_count & 
+      nchar(next_code) > char_count & 
+      substr(next_code, 1, char_count) == current_code
+      ) {
+    # if yes, update vals
+          new_coeffs_4_digit_updated[nrow(new_coeffs_4_digit_updated) + 1,] = 
+            update_coeffs(new_vals, all_coeffs, current_code, next_code, next_row, char_count)
+  } else {
+    # if not, append row to data
+          new_coeffs_4_digit_updated[nrow(new_coeffs_4_digit_updated) + 1,] = new_vals
+  }
+}
+# append last row
+new_coeffs_4_digit_updated = rbind(new_coeffs_4_digit_updated, tail(all_coeffs, 1))
+```
+
+## Update 3-digit NAICS Codes
+
+```{r}
+# initialize new table
+final_coeffs_3_digit_updated = all_coeffs[0, ]
+# updating 4 digit naics codes
+char_count = 3 
+# iterate through rows in mecs table
+for (row in 1: (nrow(new_coeffs_4_digit_updated) - 1) ) {
+  # define current code, next code, and next row index with same end use as current
+  current_code = new_coeffs_4_digit_updated$naics_code[row]
+  next_row = row + 1
+  next_code = new_coeffs_4_digit_updated$naics_code[next_row]
+  # build array of vals for row to be updated
+  new_vals = new_coeffs_4_digit_updated[row, ]
+  # check next row is subcode of current code
+  if (
+      nchar(current_code) == char_count & 
+      nchar(next_code) > char_count & 
+      substr(next_code, 1, char_count) == current_code
+      ) {
+    # if yes, update vals
+          final_coeffs_3_digit_updated[nrow(final_coeffs_3_digit_updated) + 1,] = 
+            update_coeffs(new_vals, new_coeffs_4_digit_updated, current_code, next_code, next_row, char_count)
+  } else {
+    # if not, append row to data
+          final_coeffs_3_digit_updated[nrow(final_coeffs_3_digit_updated) + 1,] = new_vals
+  }
+}
+# append last row
+final_coeffs_3_digit_updated = rbind(final_coeffs_3_digit_updated, tail(new_coeffs_4_digit_updated, 1))
+```
+
+```{r}
+full_coeffs = final_coeffs_3_digit_updated %>% 
+  mutate(end_use = "TOTAL FUEL CONSUMPTION", .after = naics_code)
+end_uses = unique(mecs5_4_wrangled$end_use)
+naics_codes = unique(final_coeffs_3_digit_updated$naics_code)
+row = 1
+for (code in naics_codes) {
+  full_coeffs = full_coeffs %>% 
+    add_row(naics_code = code, end_use = "Conventional Boiler Use", .after = row) %>% 
+    add_row(naics_code = code, end_use = "CHP and/or Cogeneration Process", .after = row+1) %>% 
+    add_row(naics_code = code, end_use = "Process Heating", .after = row+2) %>% 
+    add_row(naics_code = code, end_use = "Process Cooling and Refrigeration", .after = row+3) %>% 
+    add_row(naics_code = code, end_use = "Machine Drive", .after = row+4) %>% 
+    add_row(naics_code = code, end_use = "Electro-Chemical Processes", .after = row+5) %>% 
+    add_row(naics_code = code, end_use = "Other Process Use", .after = row+6) %>% 
+    add_row(naics_code = code, end_use = "Facility HVAC (f)", .after = row+7) %>% 
+    add_row(naics_code = code, end_use = "Facility Lighting", .after = row+8) %>% 
+    add_row(naics_code = code, end_use = "Other Facility Support", .after = row+9) %>% 
+    add_row(naics_code = code, end_use = "Onsite Transportation", .after = row+10) %>% 
+    add_row(naics_code = code, end_use = "Conventional Electricity Generation", .after = row+11) %>% 
+    add_row(naics_code = code, end_use = "Other Nonprocess Use", .after = row+12) %>% 
+    add_row(naics_code = code, end_use = "End Use Not Reported", .after = row+13) 
+  row = row + 15 #length(end_uses)
+}
+```
+
+```{r}
+scaled_coeffs = full_coeffs
+back_count = 0
+for (row in 2:nrow(scaled_coeffs)) {
+  #print(row)
+  back_count = back_count + 1
+  #print(back_count)
+  if (back_count == 15) {
+    back_count = 0
+  }
+  if (scaled_coeffs$end_use[row] != "TOTAL FUEL CONSUMPTION") {
+    for (col in colnames(scaled_coeffs)) {
+      if (substr(col, 1, 4) == "elec") {
+        scaled_coeffs[row, col] = 
+          scaled_coeffs[row - back_count, col] * 
+          mecs5_4_wrangled[row, "net_electricity_demand"] /
+          mecs5_4_wrangled[row - back_count, "net_electricity_demand"]
+        #print(col)
+      } else if (substr(col, 1, 2) == "ng") {
+        scaled_coeffs[row, col] = 
+          scaled_coeffs[row - back_count, col] * 
+          mecs5_4_wrangled[row, "nat_gas"] /
+          mecs5_4_wrangled[row - back_count, "nat_gas"]
+      }
+    }
+  }
+  
+}
+
+```
+
+
+```{r}
+# export coeffs to excel file
+coeffs_wrangled = scaled_coeffs
+write_xlsx(coeffs_wrangled, here("outputs", "coeffs_wrangled.xlsx"))
+```
+

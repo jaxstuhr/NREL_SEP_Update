@@ -106,7 +106,7 @@ mecs5_4 = mecs5_4 %>%
 
 ```{r}
 # function to update aggregated values in MECS table
-update_naics_vals = function(new_vals, mecs_table, current_code, next_code, current_row, next_row, end_use_count, char_count) {
+update_naics_vals = function(new_vals, mecs_table, current_code, next_code, next_row, end_use_count, char_count) {
     # update values of usage columns when match is found (indices are for values that need updating)
     new_vals[3:8] = new_vals[3:8] - mecs_table[next_row, 3:8]
     # update next row (w same end use) and code
@@ -119,13 +119,11 @@ update_naics_vals = function(new_vals, mecs_table, current_code, next_code, curr
       substr(next_code, 1, char_count) == current_code
       ) {
       # if yes, recall update naics function
-        return(update_naics_vals(new_vals, mecs_table, current_code, next_code, current_row, next_row, end_use_count, char_count))
+        return(update_naics_vals(new_vals, mecs_table, current_code, next_code, next_row, end_use_count, char_count))
     } else {
       # if no, return new vals
         return(new_vals)
       }
-   # update_naics_vals(new_vals, mecs_table, current_code, next_code, current_row, next_row, end_use_count, char_count)
-  #}
 }
 ```
 
@@ -153,7 +151,7 @@ for (row in 1: (nrow(mecs5_4) - end_use_count) ) {
       ) {
     # if yes, update vals
           new_mecs_table[nrow(new_mecs_table) + 1,] = 
-    update_naics_vals(new_vals, mecs5_4, current_code, next_code, current_row, next_row, end_use_count, char_count)
+    update_naics_vals(new_vals, mecs5_4, current_code, next_code, next_row, end_use_count, char_count)
   } else {
     # if not, append row to data
     new_mecs_table[nrow(new_mecs_table) + 1,] = new_vals
@@ -189,7 +187,7 @@ for (row in 1:(nrow(new_mecs_table) - end_use_count) ) {
       ) {
     # if yes, update vals
           final_mecs_table[nrow(final_mecs_table) + 1,] = 
-    update_naics_vals(new_vals, new_mecs_table, current_code, next_code, current_row, next_row, end_use_count, char_count)
+    update_naics_vals(new_vals, new_mecs_table, current_code, next_code, next_row, end_use_count, char_count)
   } else {
     # if not, append row to data
     final_mecs_table[nrow(final_mecs_table) + 1,] = new_vals
