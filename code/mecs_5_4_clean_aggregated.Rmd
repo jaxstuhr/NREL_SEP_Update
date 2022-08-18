@@ -1,0 +1,87 @@
+---
+title: "MECS 5.4 Clean - Aggregated"
+author: "Jaxon Stuhr"
+date: "5/21/2022"
+output: html_document
+---
+
+This script cleans the MECS 5.4 table. This table provides fuel consumption by end use and fuel type for all NAICS manufacturing sectors (all units = TBtu). NAICS categories are "aggregated", meaning 3-digit NAICS codes include all fuel consumption of 4, 5, and 6-digit subsector NAICS codes. This means that the dataset cannot be summed over sectors (NAICS codes) to get total fuel consumption, as there would be double counting of subsector consumption.
+
+Load in libraries
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(here)
+library(tidyverse)
+library(readxl)
+library(janitor)
+library(writexl)
+```
+
+Read in MECS 5.4, all units are TBtu
+```{r}
+# read in raw mecs tables
+raw5_4 = read_excel(here("data", "Table5_4.xlsx")) # UNITS = Tbtu
+```
+
+Rename columns as fuel types and remove filler rows
+```{r}
+# clean data 
+mecs5_4 = raw5_4 %>% 
+  # delete top rows
+  tail(-14) %>% 
+  # rename cols
+  rename("naics_code" = "Released: February 2021",
+         "end_use" = "...2",
+         "net_electricity_demand" = "...3",
+         "residual_fuel_oil" = "...4",
+         "distillate_fuel_oil_and_diesel_fuel" = "...5",
+         "nat_gas" = "...6",
+         "hgl_excluding_ng" = "...7",
+         "coal_excluding_coke_and_breeze" = "...8") %>%
+    # remove cols after end
+  select(naics_code : coal_excluding_coke_and_breeze) %>% 
+  # remove blank rows
+  remove_empty("rows") 
+```
+
+Set correct NAICS code for all rows
+```{r}
+counter = 1
+for (entry in mecs5_4$naics_code) {
+  if (is.na(entry)) {
+    mecs5_4$naics_code[counter] = mecs5_4$naics_code[counter - 1]
+  }
+  counter = counter + 1
+}  
+```
+
+Convert type to numeric for "value" rows
+```{r}
+cols_to_numeric = c(3:8) 
+mecs5_4[ , cols_to_numeric] = apply(mecs5_4[ , cols_to_numeric], 2,  # Specify own function within apply
+                    function(x) as.numeric(as.character(x)
+                                           )
+                    )
+# convert NAs to 0
+mecs5_4[is.na(mecs5_4)] = 0
+```
+
+Remove other unnecessary rows
+```{r}
+mecs5_4 = mecs5_4 %>% 
+  filter(!(end_use %in% c("Indirect Uses-Boiler Fuel", # "subtotal" rows
+                          "Direct Uses-Total Process", 
+                          "Direct Uses-Total Nonprocess")),
+         naics_code != "311 - 339") 
+mecs5_4 = mecs5_4 %>% filter(end_use %in% mecs5_4$end_use[2:16]) # other rows
+```
+
+Write dataset to excel file
+```{r}
+# write final dataframe to an excel file
+write_xlsx(mecs5_4, here("outputs", "MECS_5_4_Clean.xlsx"))
+```
+
+
+
+

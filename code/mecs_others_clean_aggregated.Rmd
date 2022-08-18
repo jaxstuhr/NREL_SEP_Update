@@ -1,0 +1,149 @@
+---
+title: "MECS Byproducts and Wood Fuels Clean - Aggregated"
+author: "Jaxon Stuhr"
+date: "5/21/2022"
+output: html_document
+---
+
+This script cleans MECS tables 3.5 (byproduct fuels) and 3.6 (wood fuels) which provide fuel consumption by fuel type for all NAICS manufacturing sectors (all units = TBtu). NAICS categories are "aggregated", meaning 3-digit NAICS codes include all fuel consumption of 4, 5, and 6-digit subsector NAICS codes. This means that the dataset cannot be summed over sectors (NAICS codes) to get total fuel consumption, as there would be double counting of subsector consumption.
+
+This code requires "mecs_5_4_clean_aggregated.Rmd" to be run first, in this environment
+
+Load in libraries
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(here)
+library(tidyverse)
+library(readxl)
+library(janitor)
+library(writexl)
+```
+
+Read in Mecs 3.2, 3.5, 3.6
+```{r}
+# read in raw mecs tables
+raw3_2 = read_excel(here("data", "Table3_2.xlsx")) # UNITS = Tbtu
+raw3_5 = read_excel(here("data", "Table3_5.xlsx")) # UNITS = Tbtu
+raw3_6 = read_excel(here("data", "Table3_6.xlsx")) # UNITS = Tbtu
+```
+
+Rename columns as fuel types and remove filler rows (3.2)
+```{r}
+# clean table 3.5
+# Total united states only
+mecs3_2 = raw3_2 %>% 
+  # delete top rows
+  tail(-12) %>% 
+  # rename cols
+  rename("naics_code" = "Released: February 2021",
+         "other" = "...11") %>%
+  # remove subsector description column
+  select(naics_code, other) %>%
+  # remove blank rows
+  remove_empty("rows") %>% 
+  # total US only
+  head(82) %>% 
+  # convert values to numeric
+  mutate_all(as.numeric)
+```
+
+Rename columns as fuel types and remove filler rows (3.5)
+```{r}
+# clean table 3.5
+# Total united states only
+mecs3_5 = raw3_5 %>% 
+  # delete top rows
+  tail(-12) %>% 
+  # rename cols
+  rename("naics_code" = "Released: February 2021",
+         "blast_furnace_coke_oven_gases" = "...4",
+         "waste_gas" = "...5",
+         "petroleum_coke" = "...6",
+         "pulping_liquor_or_black_liquor" = "...7",
+         "wood_chips_bark" = "...8",
+         "waste_oils_tars_waste_minerals" = "...9") %>%
+  # remove subsector description column
+  select(naics_code, blast_furnace_coke_oven_gases : waste_oils_tars_waste_minerals) %>%
+  # remove blank rows
+  remove_empty("rows") %>% 
+  # total US only
+  head(82) %>% 
+  # convert values to numeric
+  mutate_all(as.numeric)
+```
+
+Rename columns as fuel types and remove filler rows (3.6). From 3.6, only ag waste is needed as wood chips from 3.5 covers the other woody biomass included in 3.6.
+```{r}
+# clean table 3.6
+# Total united states only
+mecs3_6 = raw3_6 %>% 
+  # delete top rows
+  tail(-17) %>% 
+  # rename cols
+  rename("naics_code" = "Released: February 2021",
+         "agricultural_waste" = "...5") %>% 
+  # remove subsector description column
+  select(naics_code, agricultural_waste) %>%
+  # remove blank rows
+  remove_empty("rows") %>%
+  # total US only
+  head(14) %>% 
+  # convert values to numeric
+  mutate_all(as.numeric)
+  # add missing rows with 0s
+ missing_codes = mecs3_5$naics_code[!(mecs3_5$naics_code %in% mecs3_6$naics_code)]
+  for (code in missing_codes) {
+    mecs3_6[nrow(mecs3_6) + 1,] = as.list(c(code,0))
+  }
+  ### 311221 added but 3112 set to zero, MANUALLY UPDATE 3112!!!
+  mecs3_6[15,2] = mecs3_6[2,2]
+```
+
+Merge Tables 3.2, 3.5, 3.6 together into "Others". This includes only some of the "Other" fuel types denoted in MECS 5.2
+```{r}
+# merge all tables by naics code
+mecs_others = mecs3_5 %>% 
+  merge(mecs3_6, by = "naics_code", all = TRUE, sort = FALSE) %>% 
+  merge(mecs3_2, by = "naics_code", all = TRUE, sort = FALSE) %>% 
+  mutate_all(funs(ifelse(is.na(.), 0, .))) # set all NAs to zero
+```
+
+Add in rows for end-uses of MECS 5.4, as 3.5 and 3.6 only have sector-level data. This code loops through each NAICS code, adding 15 new rows after each "Total" row for each end use. These values are left blank for now and are filled-in in Excel. 
+```{r}
+mecs_others = mecs_others %>% 
+  mutate(end_use = "TOTAL FUEL CONSUMPTION", .after = naics_code)
+end_uses = unique(mecs5_4$end_use)
+naics_codes = unique(mecs_others$naics_code)
+row = 1
+for (code in naics_codes) {
+  mecs_others = mecs_others %>% 
+    add_row(naics_code = code, end_use = "Conventional Boiler Use", .after = row) %>% 
+    add_row(naics_code = code, end_use = "CHP and/or Cogeneration Process", .after = row+1) %>% 
+    add_row(naics_code = code, end_use = "Process Heating", .after = row+2) %>% 
+    add_row(naics_code = code, end_use = "Process Cooling and Refrigeration", .after = row+3) %>% 
+    add_row(naics_code = code, end_use = "Machine Drive", .after = row+4) %>% 
+    add_row(naics_code = code, end_use = "Electro-Chemical Processes", .after = row+5) %>% 
+    add_row(naics_code = code, end_use = "Other Process Use", .after = row+6) %>% 
+    add_row(naics_code = code, end_use = "Facility HVAC (f)", .after = row+7) %>% 
+    add_row(naics_code = code, end_use = "Facility Lighting", .after = row+8) %>% 
+    add_row(naics_code = code, end_use = "Other Facility Support", .after = row+9) %>% 
+    add_row(naics_code = code, end_use = "Onsite Transportation", .after = row+10) %>% 
+    add_row(naics_code = code, end_use = "Conventional Electricity Generation", .after = row+11) %>% 
+    add_row(naics_code = code, end_use = "Other Nonprocess Use", .after = row+12) %>% 
+    add_row(naics_code = code, end_use = "End Use Not Reported", .after = row+13) 
+  row = row + 15 #length(end_uses)
+}
+```
+
+Update "Other" Column to be leftovers after byproducts and biomass
+```{r}
+mecs_others = mecs_others %>% 
+  mutate(other = other - blast_furnace_coke_oven_gases - waste_gas - petroleum_coke - pulping_liquor_or_black_liquor - wood_chips_bark - waste_oils_tars_waste_minerals - agricultural_waste  )
+```
+
+
+Write to excel file
+```{r}
+write_xlsx(mecs_others, here("outputs", "MECS_Others_Clean.xlsx"))
+```
+

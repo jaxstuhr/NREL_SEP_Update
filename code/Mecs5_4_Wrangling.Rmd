@@ -1,12 +1,14 @@
 ---
-title: "Data Wranglin"
+title: "MECS 5.4 Clean - Disaggregated"
 author: "Jaxon Stuhr"
 date: "1/27/2022"
 output: html_document
 ---
 
+This script cleans the MECS 5.4 table and disaggregates all sectos. This table provides fuel consumption by end use and fuel type for all NAICS manufacturing sectors (all units = TBtu). NAICS categories are "disaggregated", meaning 3-digit and 4-digit NAICS codes DO NOT include energy consumption of their subsectors. These should be thought of as "3xx (other)" This dataset can be summed over sectors (NAICS codes) to get total fuel consumption, as there will be no double counting of subsector consumption. 
+
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 library(here)
 library(tidyverse)
 library(readxl)
@@ -54,7 +56,7 @@ for (entry in mecs5_4$naics_code) {
 ```{r}
 # convert data type to numeric for columns 3 - 10
 cols_to_numeric = c(3:8) 
-mecs5_4[ , cols_to_numeric] = apply(mecs5_4[ , cols_to_numeric], 2,            # Specify own function within apply
+mecs5_4[ , cols_to_numeric] = apply(mecs5_4[ , cols_to_numeric], 2,  # Specify own function within apply
                     function(x) as.numeric(as.character(x)
                                            )
                     )
@@ -205,5 +207,13 @@ final_mecs_table = rbind(final_mecs_table, end_of_old_table)
 mecs5_4_wrangled = final_mecs_table
 write_xlsx(mecs5_4_wrangled, here("outputs", "mecs5_4_wrangled.xlsx"))
 ```
+
+```{#r}
+# write second MECS file for steam analysis, only boilers and summing
+steam_mecs_5_4 = final_mecs_table %>% 
+  filter(end_use == "Conventional Boiler Use") %>% 
+  pivot_longer(3:8, names_to = "fuel_type", values_to = "fuel_consumption_tbtu")
+```
+
 
 

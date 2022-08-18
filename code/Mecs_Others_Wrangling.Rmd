@@ -1,12 +1,14 @@
 ---
-title: "Get MECS Coeffs"
+title: "MECS Others Clean - Disaggregated"
 author: "Jaxon Stuhr"
 date: "2/9/2022"
 output: html_document
 ---
 
+This script cleans MECS tables 3.2, 3.5 (byproduct fuels) and 3.6 (wood fuels), 7.7, 11.1, 11.3, 11.5, which provide fuel consumption by fuel type for all NAICS manufacturing sectors (all units = TBtu). NAICS categories are "disaggregated", meaning 3-digit and 4-digit NAICS codes DO NOT include energy consumption of their subsectors. These should be thought of as "3xx (other)" This dataset can be summed over sectors (NAICS codes) to get total fuel consumption, as there will be no double counting of subsector consumption. Additionally, blank rows are added so that the consumption of "Other" fuels can be disaggregated be end-use (this is performed seperateley in excel).
+
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 library(here)
 library(tidyverse)
 library(readxl)
@@ -24,6 +26,7 @@ bil_btu_to_tbtu = 0.001
 
 ```{r}
 # read in raw mecs tables
+raw3_2 = read_excel(here("data", "Table3_2.xlsx"))
 raw3_5 = read_excel(here("data", "Table3_5.xlsx")) # UNITS = Tbtu
 raw3_6 = read_excel(here("data", "Table3_6.xlsx")) # UNITS = Tbtu
 raw7_7 = read_excel(here("data", "Table7_7.xlsx")) # UNITS = varied, million kWh or billion cu ft or billion btu
@@ -35,11 +38,32 @@ raw11_5 = read_excel(here("data", "Table11_5.xlsx")) # UNITS = million kWh
 ```{r}
 # clean table 3.5
 # Total united states only
+mecs3_2 = raw3_2 %>% 
+  # delete top rows
+  tail(-12) %>% 
+  # rename cols
+  rename("naics_code" = "Released: February 2021",
+         "coke_and_breeze" = "...10",
+         "other" = "...11") %>%
+  # remove subsector description column
+  select(naics_code, coke_and_breeze, other) %>%
+  # remove blank rows
+  remove_empty("rows") %>% 
+  # total US only
+  head(82) %>% 
+  # convert values to numeric
+  mutate_all(as.numeric)
+```
+
+```{r}
+# clean table 3.5
+# Total united states only
 mecs3_5 = raw3_5 %>% 
   # delete top rows
   tail(-12) %>% 
   # rename cols
   rename("naics_code" = "Released: February 2021",
+         "subsector_and_industry" = "...2",
          "selected_byproducts_in_fuel_consumption_total" = "...3",
          "blast_furnace_coke_oven_gases" = "...4",
          "waste_gas" = "...5",
@@ -210,6 +234,7 @@ all_coeffs = mecs3_5 %>%
   merge(mecs11_1, by = "naics_code", sort = FALSE) %>% 
   merge(mecs11_3, by = "naics_code", sort = FALSE) %>% 
   merge(mecs11_5, by = "naics_code", sort = FALSE) %>% 
+  merge(mecs3_2, by = "naics_code", sort = FALSE) %>% 
   # set all NAs to zero
   mutate_all(funs(ifelse(is.na(.), 0, .)))
 ```
@@ -218,7 +243,7 @@ all_coeffs = mecs3_5 %>%
 # function to update aggregated values in MECS table
 update_coeffs = function(new_vals, mecs_table, current_code, next_code, next_row, char_count) {
     # update values of usage columns when match is found (indices are for values that need updating)
-    new_vals[2:34] = new_vals[2:34] - mecs_table[next_row, 2:34]
+    new_vals[2:36] = new_vals[2:36] - mecs_table[next_row, 2:36]
     # update next row (w same end use) and code
     next_row = next_row + 1
     next_code = mecs_table$naics_code[next_row]
@@ -360,10 +385,9 @@ for (row in 2:nrow(scaled_coeffs)) {
 
 ```
 
-
 ```{r}
 # export coeffs to excel file
-coeffs_wrangled = scaled_coeffs
-write_xlsx(coeffs_wrangled, here("outputs", "coeffs_wrangled.xlsx"))
+mecs_other_wrangled = scaled_coeffs
+write_xlsx(mecs_other_wrangled, here("outputs", "mecs_other_wrangled.xlsx"))
 ```
 
